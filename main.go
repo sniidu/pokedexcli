@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/sniidu/pokedexcli/internal/pokeapi"
+	"github.com/sniidu/pokedexcli/internal/shared"
 )
 
 // Commands
@@ -15,6 +18,7 @@ type cliCommand struct {
 	name        string
 	description string
 	callback    func() error
+	config      *shared.Config
 }
 
 var commands map[string]cliCommand
@@ -30,6 +34,12 @@ func init() {
 			name:        "help",
 			description: "Displays a help message",
 			callback:    commandHelp,
+		},
+		"map": {
+			name:        "map",
+			description: "Displays locations",
+			callback:    commandMap,
+			config:      &shared.Config{Next: "https://pokeapi.co/api/v2/location/", Previous: ""},
 		},
 	}
 }
@@ -54,6 +64,11 @@ func commandHelp() error {
 	for name, cli := range commands {
 		fmt.Printf("%s: %s\n", name, cli.description)
 	}
+	return nil
+}
+
+func commandMap() error {
+	pokeapi.Map(commands["map"].config)
 	return nil
 }
 

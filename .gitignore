@@ -26,3 +26,5 @@ go.work.sum
 
 # executable
 pokedexcli
+# example data
+location.json
