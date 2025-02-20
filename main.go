@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/sniidu/pokedexcli/internal/pokeapi"
+	"github.com/sniidu/pokedexcli/internal/pokecache"
 	"github.com/sniidu/pokedexcli/internal/shared"
 )
 
@@ -21,9 +23,17 @@ type cliCommand struct {
 	config      *shared.Config
 }
 
-var commands map[string]cliCommand
+var (
+	commands map[string]cliCommand
+	cache    = pokecache.NewCache(time.Second * 50)
+)
 
 func init() {
+	mapConfig := shared.Config{
+		Next:     "https://pokeapi.co/api/v2/location-area/?offset=0&limit=20",
+		Previous: "",
+	}
+
 	commands = map[string]cliCommand{
 		"exit": {
 			name:        "exit",
@@ -37,9 +47,15 @@ func init() {
 		},
 		"map": {
 			name:        "map",
-			description: "Displays locations",
+			description: "Displays location areas",
 			callback:    commandMap,
-			config:      &shared.Config{Next: "https://pokeapi.co/api/v2/location/", Previous: ""},
+			config:      &mapConfig,
+		},
+		"mapb": {
+			name:        "map",
+			description: "Displays location areas",
+			callback:    commandMapBack,
+			config:      &mapConfig,
 		},
 	}
 }
@@ -68,7 +84,12 @@ func commandHelp() error {
 }
 
 func commandMap() error {
-	pokeapi.Map(commands["map"].config)
+	pokeapi.Map(commands["map"].config, false, cache)
+	return nil
+}
+
+func commandMapBack() error {
+	pokeapi.Map(commands["map"].config, true, cache)
 	return nil
 }
 
