@@ -19,7 +19,7 @@ import (
 type cliCommand struct {
 	name        string
 	description string
-	callback    func() error
+	callback    func(...string) error
 	config      *shared.Config
 }
 
@@ -31,6 +31,11 @@ var (
 func init() {
 	mapConfig := shared.Config{
 		Next:     "https://pokeapi.co/api/v2/location-area/?offset=0&limit=20",
+		Previous: "",
+	}
+
+	areaConfig := shared.Config{
+		Next:     "https://pokeapi.co/api/v2/location-area/",
 		Previous: "",
 	}
 
@@ -57,6 +62,12 @@ func init() {
 			callback:    commandMapBack,
 			config:      &mapConfig,
 		},
+		"explore": {
+			name:        "explore",
+			description: "Show Pokemon located in provided area",
+			callback:    commandExplore,
+			config:      &areaConfig,
+		},
 	}
 }
 
@@ -69,13 +80,13 @@ func cleanInput(text string) []string {
 	return result
 }
 
-func commandExit() error {
+func commandExit(param ...string) error {
 	fmt.Println("Closing the Pokedex... Goodbye!")
 	os.Exit(0)
 	return nil
 }
 
-func commandHelp() error {
+func commandHelp(param ...string) error {
 	fmt.Print("Welcome to the Pokedex!\nUsage:\n\n")
 	for name, cli := range commands {
 		fmt.Printf("%s: %s\n", name, cli.description)
@@ -83,13 +94,19 @@ func commandHelp() error {
 	return nil
 }
 
-func commandMap() error {
+func commandMap(param ...string) error {
 	pokeapi.Map(commands["map"].config, false, cache)
 	return nil
 }
 
-func commandMapBack() error {
+func commandMapBack(param ...string) error {
 	pokeapi.Map(commands["map"].config, true, cache)
+	return nil
+}
+
+func commandExplore(param ...string) error {
+	// At the moment just care of first parameter
+	pokeapi.Explore(param[0], commands["explore"].config, cache)
 	return nil
 }
 
@@ -98,12 +115,17 @@ func main() {
 	for {
 		fmt.Print("Pokedex > ")
 		scanner.Scan()
-		command := cleanInput(scanner.Text())[0]
+		input := cleanInput(scanner.Text())
+		command := input[0]
+		var parameter string
+		if len(input) > 1 {
+			parameter = input[1]
+		}
 		currentCliCommand, found := commands[command]
 		if !found {
 			fmt.Println("Unknown command")
 			continue
 		}
-		currentCliCommand.callback()
+		currentCliCommand.callback(parameter)
 	}
 }

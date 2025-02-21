@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 
 	"github.com/sniidu/pokedexcli/internal/pokecache"
 	"github.com/sniidu/pokedexcli/internal/shared"
 )
 
-type location struct {
+type locationBundle struct {
 	Count    int    `json:"count"`
 	Next     string `json:"next"`
 	Previous string `json:"previous"`
@@ -18,6 +19,51 @@ type location struct {
 		Name string `json:"name"`
 		URL  string `json:"url"`
 	} `json:"results"`
+}
+
+type location struct {
+	ID                int    `json:"id"`
+	Name              string `json:"name"`
+	PokemonEncounters []struct {
+		Pokemon struct {
+			Name string `json:"name"`
+			URL  string `json:"url"`
+		} `json:"pokemon"`
+	} `json:"pokemon_encounters"`
+}
+
+func Explore(area string, c *shared.Config, cache *pokecache.Cache) {
+	var data []byte
+	var err error
+	url := c.Next + area
+
+	data, found := cache.Get(url)
+
+	if !found {
+		fmt.Println("Cache miss!")
+		data, err = fetch(url)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+	}
+
+	singleLocation, err := unmarshalLocation(data)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	if !found {
+		cache.Add(url+strconv.Itoa(singleLocation.ID), data)
+		cache.Add(url+singleLocation.Name, data)
+	}
+
+	fmt.Println("Exploring", singleLocation.Name, "...")
+	fmt.Println("Found Pokemon:")
+	for _, pokemon := range singleLocation.PokemonEncounters {
+		fmt.Println(string('-'), pokemon.Pokemon.Name)
+	}
 }
 
 func Map(c *shared.Config, back bool, cache *pokecache.Cache) {
@@ -48,7 +94,7 @@ func Map(c *shared.Config, back bool, cache *pokecache.Cache) {
 		cache.Add(url, data)
 	}
 
-	locations, err := unmarsh(data)
+	locations, err := unmarshalLocationBundle(data)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -57,11 +103,7 @@ func Map(c *shared.Config, back bool, cache *pokecache.Cache) {
 	c.Next = locations.Next
 	c.Previous = locations.Previous
 
-	locations.printer()
-}
-
-func (l location) printer() {
-	for _, loc := range l.Results {
+	for _, loc := range locations.Results {
 		fmt.Println(loc.Name)
 	}
 }
@@ -81,11 +123,20 @@ func fetch(url string) ([]byte, error) {
 	return data, nil
 }
 
-func unmarsh(data []byte) (location, error) {
-	var locations location
+func unmarshalLocation(data []byte) (location, error) {
+	var singleLocation location
+
+	if err := json.Unmarshal(data, &singleLocation); err != nil {
+		return location{}, fmt.Errorf("can't unmarshal result due to %e", err)
+	}
+	return singleLocation, nil
+}
+
+func unmarshalLocationBundle(data []byte) (locationBundle, error) {
+	var locations locationBundle
 
 	if err := json.Unmarshal(data, &locations); err != nil {
-		return location{}, fmt.Errorf("can't unmarshal result due to %e", err)
+		return locationBundle{}, fmt.Errorf("can't unmarshal result due to %e", err)
 	}
 	return locations, nil
 }
