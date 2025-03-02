@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"strconv"
 
 	"github.com/sniidu/pokedexcli/internal/pokecache"
+	"github.com/sniidu/pokedexcli/internal/pokedex"
 	"github.com/sniidu/pokedexcli/internal/shared"
 )
 
@@ -32,29 +34,74 @@ type location struct {
 	} `json:"pokemon_encounters"`
 }
 
-func Explore(area string, c *shared.Config, cache *pokecache.Cache) {
+// Create random number between 0 and maxBaseExperience
+// If result is greater than experience, caught was successfull
+func caught(experience int) bool {
+	maxBaseExperience := 300
+	return rand.Intn(maxBaseExperience) > experience
+}
+
+func Catch(poke string, c *shared.Config, cache *pokecache.Cache, dex map[string]pokedex.Pokemon) error {
+	var data []byte
+	var err error
+	url := c.Next + poke
+
+	data, found := cache.Get(url)
+
+	// Fetch if not in cache
+	if !found {
+		data, err = fetch(url)
+		if err != nil {
+			return fmt.Errorf("error while fetching: %w", err)
+		}
+		cache.Add(url, data)
+	}
+
+	// Unmarshal data either from cache or fetch
+	pokemonResponse, err := unmarshal[pokedex.Pokemon](data)
+	if err != nil {
+		return fmt.Errorf("error unmarshaling: %w", err)
+	}
+
+	fmt.Println("catch", poke)
+	fmt.Printf("Throwing a Pokeball at %s...\n", poke)
+	if caught(pokemonResponse.BaseExperience) {
+		fmt.Println(poke, "was caught!")
+		dex[poke] = pokemonResponse
+		fmt.Println("You may now inspect it with the inspect command.")
+	} else {
+		fmt.Println(poke, "escaped!")
+	}
+
+	return nil
+}
+
+// Prints Pokemon found from provided area
+// Area can be either name or id of said area
+func Explore(area string, c *shared.Config, cache *pokecache.Cache) error {
 	var data []byte
 	var err error
 	url := c.Next + area
 
 	data, found := cache.Get(url)
 
+	// Fetch if not in cache
 	if !found {
-		fmt.Println("Cache miss!")
 		data, err = fetch(url)
 		if err != nil {
-			fmt.Println(err)
-			return
+			return fmt.Errorf("error while fetching: %w", err)
 		}
 	}
 
-	singleLocation, err := unmarshalLocation(data)
+	// Unmarshal data either from cache or fetch
+	singleLocation, err := unmarshal[location](data)
 	if err != nil {
-		fmt.Println(err)
-		return
+		return fmt.Errorf("error unmarshaling: %w", err)
 	}
 
+	// Add cache as id and name known latest here
 	if !found {
+		// Integer to string as plain string(id) would rune it
 		cache.Add(url+strconv.Itoa(singleLocation.ID), data)
 		cache.Add(url+singleLocation.Name, data)
 	}
@@ -64,9 +111,13 @@ func Explore(area string, c *shared.Config, cache *pokecache.Cache) {
 	for _, pokemon := range singleLocation.PokemonEncounters {
 		fmt.Println(string('-'), pokemon.Pokemon.Name)
 	}
+
+	return nil
 }
 
-func Map(c *shared.Config, back bool, cache *pokecache.Cache) {
+// Traverses through location areas in Pokemon and prints names of areas
+// Keeps track of page and can move backwards and forwards
+func Map(c *shared.Config, back bool, cache *pokecache.Cache) error {
 	var url string
 	if back {
 		url = c.Previous
@@ -76,7 +127,7 @@ func Map(c *shared.Config, back bool, cache *pokecache.Cache) {
 
 	if url == "" {
 		fmt.Println("you're on the first page")
-		return
+		return nil
 	}
 
 	var data []byte
@@ -85,19 +136,16 @@ func Map(c *shared.Config, back bool, cache *pokecache.Cache) {
 	data, found := cache.Get(url)
 
 	if !found {
-		fmt.Println("Cache miss!")
 		data, err = fetch(url)
 		if err != nil {
-			fmt.Println(err)
-			return
+			return fmt.Errorf("error while fetching: %w", err)
 		}
 		cache.Add(url, data)
 	}
 
-	locations, err := unmarshalLocationBundle(data)
+	locations, err := unmarshal[locationBundle](data)
 	if err != nil {
-		fmt.Println(err)
-		return
+		return fmt.Errorf("error unmarshaling: %w", err)
 	}
 
 	c.Next = locations.Next
@@ -106,6 +154,8 @@ func Map(c *shared.Config, back bool, cache *pokecache.Cache) {
 	for _, loc := range locations.Results {
 		fmt.Println(loc.Name)
 	}
+
+	return nil
 }
 
 func fetch(url string) ([]byte, error) {
@@ -123,20 +173,12 @@ func fetch(url string) ([]byte, error) {
 	return data, nil
 }
 
-func unmarshalLocation(data []byte) (location, error) {
-	var singleLocation location
+// Generics introduction
+func unmarshal[T any](data []byte) (T, error) {
+	var decoded T
 
-	if err := json.Unmarshal(data, &singleLocation); err != nil {
-		return location{}, fmt.Errorf("can't unmarshal result due to %e", err)
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return decoded, fmt.Errorf("can't unmarshal result due to %e", err)
 	}
-	return singleLocation, nil
-}
-
-func unmarshalLocationBundle(data []byte) (locationBundle, error) {
-	var locations locationBundle
-
-	if err := json.Unmarshal(data, &locations); err != nil {
-		return locationBundle{}, fmt.Errorf("can't unmarshal result due to %e", err)
-	}
-	return locations, nil
+	return decoded, nil
 }

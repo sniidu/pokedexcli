@@ -28,3 +28,4 @@ go.work.sum
 pokedexcli
 # example data
 location.json
+location_by_id.json

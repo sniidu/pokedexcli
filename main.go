@@ -9,6 +9,7 @@ import (
 
 	"github.com/sniidu/pokedexcli/internal/pokeapi"
 	"github.com/sniidu/pokedexcli/internal/pokecache"
+	"github.com/sniidu/pokedexcli/internal/pokedex"
 	"github.com/sniidu/pokedexcli/internal/shared"
 )
 
@@ -26,6 +27,7 @@ type cliCommand struct {
 var (
 	commands map[string]cliCommand
 	cache    = pokecache.NewCache(time.Second * 50)
+	dex      = make(map[string]pokedex.Pokemon)
 )
 
 func init() {
@@ -36,6 +38,11 @@ func init() {
 
 	areaConfig := shared.Config{
 		Next:     "https://pokeapi.co/api/v2/location-area/",
+		Previous: "",
+	}
+
+	pokemonConfig := shared.Config{
+		Next:     "https://pokeapi.co/api/v2/pokemon/",
 		Previous: "",
 	}
 
@@ -68,6 +75,22 @@ func init() {
 			callback:    commandExplore,
 			config:      &areaConfig,
 		},
+		"catch": {
+			name:        "catch",
+			description: "Try to catch a Pokemon",
+			callback:    commandCatch,
+			config:      &pokemonConfig,
+		},
+		"inspect": {
+			name:        "inspect",
+			description: "Inspect Pokemon",
+			callback:    commandInspect,
+		},
+		"pokedex": {
+			name:        "pokedex",
+			description: "List caught Pokemon",
+			callback:    commandPokedex,
+		},
 	}
 }
 
@@ -86,6 +109,20 @@ func commandExit(param ...string) error {
 	return nil
 }
 
+func commandCatch(param ...string) error {
+	// At the moment just care of first parameter
+	return pokeapi.Catch(param[0], commands["catch"].config, cache, dex)
+}
+
+func commandPokedex(param ...string) error {
+	return pokedex.List(dex)
+}
+
+func commandInspect(param ...string) error {
+	// At the moment just care of first parameter
+	return pokedex.Inspect(param[0], dex)
+}
+
 func commandHelp(param ...string) error {
 	fmt.Print("Welcome to the Pokedex!\nUsage:\n\n")
 	for name, cli := range commands {
@@ -95,19 +132,16 @@ func commandHelp(param ...string) error {
 }
 
 func commandMap(param ...string) error {
-	pokeapi.Map(commands["map"].config, false, cache)
-	return nil
+	return pokeapi.Map(commands["map"].config, false, cache)
 }
 
 func commandMapBack(param ...string) error {
-	pokeapi.Map(commands["map"].config, true, cache)
-	return nil
+	return pokeapi.Map(commands["map"].config, true, cache)
 }
 
 func commandExplore(param ...string) error {
 	// At the moment just care of first parameter
-	pokeapi.Explore(param[0], commands["explore"].config, cache)
-	return nil
+	return pokeapi.Explore(param[0], commands["explore"].config, cache)
 }
 
 func main() {
@@ -118,6 +152,7 @@ func main() {
 		input := cleanInput(scanner.Text())
 		command := input[0]
 		var parameter string
+		// Apply parameter if provided
 		if len(input) > 1 {
 			parameter = input[1]
 		}
